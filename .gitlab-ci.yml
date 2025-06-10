@@ -1,0 +1,117 @@
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  NODE_VERSION: "18"
+  DEPLOY_USER: "vagrant"               # user on the deployment VM
+  DEPLOY_HOST: "192.168.56.30"        # IP of the deployment VM
+  DEPLOY_PATH: "/var/www/my-app"      # deployment path on the VM
+
+cache:
+  paths:
+    - node_modules/
+    - .npm/
+
+before_script:
+  - node --version
+  - npm --version
+  - npm ci --cache .npm --prefer-offline
+
+build:
+  stage: build
+  image: node:${NODE_VERSION}-alpine
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+  only:
+    - main
+    - develop
+    - merge_requests
+
+test:
+  stage: test
+  image: node:${NODE_VERSION}-alpine
+  script:
+    - echo "Running unit tests..."
+    - npm run test
+    - echo "Unit tests completed"
+    - echo "Verifying the build..."
+    - npm run build
+    - echo "Build verified"
+  coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    paths:
+      - coverage/
+    expire_in: 1 week
+  only:
+    - main
+    - develop
+    - merge_requests
+
+test:performance:
+  stage: test
+  image: node:${NODE_VERSION}-alpine
+  script:
+    - echo "Performance tests..."
+    - npm run build
+    - echo "Analyzing bundle size..."
+    - ls -lah dist/
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+  only:
+    - main
+    - develop
+  allow_failure: true
+
+.deploy_template: &deploy_template
+  stage: deploy
+  image: alpine
+  before_script:
+    - apk add --no-cache openssh
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+  script:
+    - echo "Deploying to $DEPLOY_HOST"
+    - scp -r dist/* "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH"
+    - echo "Deployment completed"
+  artifacts:
+    paths:
+      - dist/
+  dependencies:
+    - build
+
+deploy_staging:
+  <<: *deploy_template
+  environment:
+    name: staging
+    url: http://$DEPLOY_HOST
+  only:
+    - develop
+  needs:
+    - build
+    - test
+
+deploy_production:
+  <<: *deploy_template
+  environment:
+    name: production
+    url: http://$DEPLOY_HOST
+  only:
+    - main
+  when: manual
+  needs:
+    - build
+    - test
