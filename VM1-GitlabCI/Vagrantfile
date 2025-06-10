@@ -1,0 +1,43 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  # ----- VM de base ---------------------------------------------------------
+  config.vm.box  = "ubuntu/jammy64"          # Ubuntu 22.04 LTS
+  config.vm.hostname = "gitlab-vm"
+
+   # ----- Réseau -------------------------------------------------------------
+  # Accès en réseau privé (accès direct à la VM via une IP locale)
+  config.vm.network "private_network", ip: "192.168.56.10"
+
+  # ----- Ressources ---------------------------------------------------------
+  config.vm.provider "virtualbox" do |vb|
+    vb.name   = "GitLab"
+    vb.cpus   = 4
+    vb.memory = 6168
+  end
+
+  # ----- Provisioning -------------------------------------------------------
+  # Installe GitLab CE et le configure avec une URL externe interne à la VM.
+  config.vm.provision "shell", inline: <<-SHELL
+    set -euo pipefail
+
+    echo "[+] Mise à jour du système"
+    sudo apt-get update -y
+    sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+
+    echo "[+] Installation des dépendances de base"
+    sudo apt-get install -y curl openssh-server ca-certificates tzdata perl
+
+    echo "[+] Ajout du dépôt officiel GitLab"
+    curl -fsSL https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | sudo bash
+
+    echo "[+] Installation de GitLab CE (omnibus)"
+    sudo EXTERNAL_URL="http://192.168.56.10" apt-get install -y gitlab-ce
+
+    echo "[+] Configuration initiale terminée."
+  SHELL
+
+  # Option : partage du dossier courant pour stocker vos dépôts localement
+  # config.vm.synced_folder ".", "/vagrant", type: "virtualbox"
+end
