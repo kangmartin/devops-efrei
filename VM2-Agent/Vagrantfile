@@ -9,7 +9,7 @@ Vagrant.configure("2") do |config|
 
   config.vm.box = "base"
   config.vm.box  = "ubuntu/jammy64"          # Ubuntu 22.04 LTS
-  config.vm.hostname = "dockerhub-vm"
+  config.vm.hostname = "agent-vm"
 
   config.vm.provision "docker" do |d|
   d.pull_images "nginx:stable-perl"
